@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>和音の流れ — Chord Flow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;600;800&family=DM+Mono:ital,wght@0,300;0,500;1,300&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+  :root {
+    --ink:       #0a0a0a;
+    --paper:     #f5f0e8;
+    --red:       #c0392b;
+    --red-dim:   #7a1f16;
+    --gold:      #b8860b;
+    --jp-blue:   #1a3a5c;
+    --jp-node:   #c0392b;
+    --wp-node:   #1a3a5c;
+    --edge-jp:   rgba(192,57,43,0.35);
+    --edge-wp:   rgba(26,58,92,0.35);
+    --edge-both: rgba(139,90,43,0.5);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'DM Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── PAPER TEXTURE ── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      repeating-linear-gradient(0deg, transparent, transparent 28px, rgba(0,0,0,0.03) 28px, rgba(0,0,0,0.03) 29px),
+      repeating-linear-gradient(90deg, transparent, transparent 28px, rgba(0,0,0,0.02) 28px, rgba(0,0,0,0.02) 29px);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── HEADER ── */
+  header {
+    position: relative;
+    z-index: 10;
+    padding: 3rem 4rem 2rem;
+    border-bottom: 1px solid rgba(0,0,0,0.12);
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: end;
+    gap: 2rem;
+  }
+
+  .title-block h1 {
+    font-family: 'Shippori Mincho', serif;
+    font-size: clamp(2rem, 4vw, 3.5rem);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    color: var(--ink);
+  }
+
+  .title-block h1 span {
+    color: var(--red);
+  }
+
+  .title-block .subtitle {
+    margin-top: 0.5rem;
+    font-size: 0.72rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: #666;
+    font-weight: 300;
+  }
+
+  .legend {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    align-items: flex-end;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #555;
+  }
+
+  .legend-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .legend-line {
+    width: 24px; height: 2px;
+    flex-shrink: 0;
+  }
+
+  /* ── CONTROLS ── */
+  .controls {
+    position: relative;
+    z-index: 10;
+    padding: 1.5rem 4rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    border-bottom: 1px solid rgba(0,0,0,0.08);
+  }
+
+  .controls-label {
+    font-size: 0.65rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: #888;
+    margin-right: 0.5rem;
+  }
+
+  .decade-btn {
+    background: transparent;
+    border: 1px solid rgba(0,0,0,0.2);
+    color: #555;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    padding: 0.4rem 1rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+  }
+
+  .decade-btn::after {
+    content: '';
+    position: absolute;
+    bottom: -1px; left: 0;
+    width: 0; height: 2px;
+    background: var(--red);
+    transition: width 0.2s;
+  }
+
+  .decade-btn:hover { color: var(--ink); border-color: rgba(0,0,0,0.5); }
+  .decade-btn:hover::after { width: 100%; }
+
+  .decade-btn.active {
+    background: var(--ink);
+    color: var(--paper);
+    border-color: var(--ink);
+  }
+
+  .decade-btn.active::after { width: 100%; background: var(--red); }
+
+  .divider-v {
+    width: 1px; height: 20px;
+    background: rgba(0,0,0,0.15);
+    margin: 0 0.5rem;
+  }
+
+  .threshold-control {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-left: auto;
+  }
+
+  .threshold-control label {
+    font-size: 0.65rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: #888;
+  }
+
+  .threshold-control input[type=range] {
+    -webkit-appearance: none;
+    width: 100px; height: 2px;
+    background: rgba(0,0,0,0.2);
+    outline: none;
+    cursor: pointer;
+  }
+
+  .threshold-control input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--red);
+    cursor: pointer;
+  }
+
+  #threshold-val {
+    font-size: 0.72rem;
+    color: var(--red);
+    min-width: 2ch;
+  }
+
+  /* ── VIZ AREA ── */
+  #viz-wrap {
+    position: relative;
+    z-index: 5;
+    width: 100%;
+    height: calc(100vh - 220px);
+    min-height: 500px;
+  }
+
+  #viz-wrap svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  /* ── NODES ── */
+  .node circle {
+    stroke-width: 2;
+    transition: r 0.2s, opacity 0.2s;
+    cursor: pointer;
+  }
+
+  .node text {
+    font-family: 'Shippori Mincho', serif;
+    font-weight: 600;
+    pointer-events: none;
+    dominant-baseline: central;
+    text-anchor: middle;
+  }
+
+  .node.faded circle { opacity: 0.15; }
+  .node.faded text   { opacity: 0.1; }
+
+  /* ── EDGES ── */
+  .edge {
+    fill: none;
+    stroke-linecap: round;
+    transition: opacity 0.2s, stroke-width 0.2s;
+  }
+
+  .edge.faded { opacity: 0.04; }
+  .edge.highlighted { stroke-width: 3 !important; opacity: 1 !important; }
+
+  /* ── TOOLTIP ── */
+  #tooltip {
+    position: fixed;
+    background: var(--ink);
+    color: var(--paper);
+    padding: 0.8rem 1.2rem;
+    font-size: 0.72rem;
+    line-height: 1.6;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    z-index: 100;
+    max-width: 220px;
+    border-left: 3px solid var(--red);
+  }
+
+  #tooltip.visible { opacity: 1; }
+
+  #tooltip .tip-chord {
+    font-family: 'Shippori Mincho', serif;
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 0.3rem;
+  }
+
+  #tooltip .tip-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  #tooltip .tip-label { color: #aaa; }
+  #tooltip .tip-val   { color: #fff; }
+
+  /* ── STAMP DECORATION ── */
+  .stamp {
+    position: fixed;
+    bottom: 2rem; right: 3rem;
+    width: 80px; height: 80px;
+    border: 3px solid var(--red);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    opacity: 0.15;
+    pointer-events: none;
+    z-index: 10;
+    transform: rotate(-12deg);
+  }
+
+  .stamp span {
+    font-family: 'Shippori Mincho', serif;
+    font-size: 0.55rem;
+    letter-spacing: 0.1em;
+    color: var(--red);
+    text-align: center;
+    line-height: 1.4;
+  }
+
+  /* ── LOADING ── */
+  #loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 1rem;
+    z-index: 20;
+    background: var(--paper);
+  }
+
+  #loading p {
+    font-size: 0.72rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: #888;
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  .loading-bar {
+    width: 120px; height: 1px;
+    background: rgba(0,0,0,0.1);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .loading-bar::after {
+    content: '';
+    position: absolute;
+    left: -40%;
+    width: 40%; height: 100%;
+    background: var(--red);
+    animation: slide 1s ease-in-out infinite;
+  }
+
+  @keyframes slide {
+    0%   { left: -40%; }
+    100% { left: 100%; }
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.4; }
+    50%       { opacity: 1; }
+  }
+
+  /* ── STATS BAR ── */
+  .stats-bar {
+    position: relative;
+    z-index: 10;
+    padding: 0.8rem 4rem;
+    border-top: 1px solid rgba(0,0,0,0.08);
+    display: flex;
+    gap: 3rem;
+    background: rgba(245,240,232,0.8);
+  }
+
+  .stat {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+
+  .stat-val {
+    font-family: 'Shippori Mincho', serif;
+    font-size: 1.3rem;
+    font-weight: 600;
+    color: var(--ink);
+  }
+
+  .stat-label {
+    font-size: 0.6rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: #999;
+  }
+</style>
+</head>
+<body>
+
+<!-- REPLACE THESE WITH YOUR ACTUAL SUPABASE CREDENTIALS -->
+<script>
+  const SUPABASE_URL = "YOUR_PROJECT_URL_HERE";
+  const SUPABASE_KEY = "YOUR_ANON_KEY_HERE";
+</script>
+
+<header>
+  <div class="title-block">
+    <h1>和音の流れ <span>—</span> Chord Flow</h1>
+    <p class="subtitle">Chord progression networks · J-Pop/J-Rock vs Eurocentric Western Pop</p>
+  </div>
+  <div class="legend">
+    <div class="legend-item">
+      <div class="legend-dot" style="background:var(--jp-node)"></div>
+      J-Pop / J-Rock transitions
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot" style="background:var(--wp-node)"></div>
+      Western Pop transitions
+    </div>
+    <div class="legend-item">
+      <div class="legend-line" style="background:linear-gradient(90deg,var(--jp-node),var(--wp-node))"></div>
+      Shared transitions
+    </div>
+  </div>
+</header>
+
+<div class="controls">
+  <span class="controls-label">Decade</span>
+  <button class="decade-btn active" data-decade="all">All</button>
+  <button class="decade-btn" data-decade="1970">70s</button>
+  <button class="decade-btn" data-decade="1980">80s</button>
+  <button class="decade-btn" data-decade="1990">90s</button>
+  <button class="decade-btn" data-decade="2000">00s</button>
+  <button class="decade-btn" data-decade="2010">10s</button>
+  <button class="decade-btn" data-decade="2020">20s</button>
+  <div class="divider-v"></div>
+  <div class="threshold-control">
+    <label>Min. transitions</label>
+    <input type="range" id="threshold" min="1" max="50" value="5">
+    <span id="threshold-val">5</span>
+  </div>
+</div>
+
+<div id="viz-wrap">
+  <div id="loading">
+    <div class="loading-bar"></div>
+    <p>Loading chord data…</p>
+  </div>
+</div>
+
+<div class="stats-bar">
+  <div class="stat">
+    <span class="stat-val" id="stat-nodes">—</span>
+    <span class="stat-label">Chord nodes</span>
+  </div>
+  <div class="stat">
+    <span class="stat-val" id="stat-edges">—</span>
+    <span class="stat-label">Transitions shown</span>
+  </div>
+  <div class="stat">
+    <span class="stat-val" id="stat-jp">—</span>
+    <span class="stat-label">J-Pop transitions</span>
+  </div>
+  <div class="stat">
+    <span class="stat-val" id="stat-wp">—</span>
+    <span class="stat-label">Western Pop transitions</span>
+  </div>
+</div>
+
+<div id="tooltip">
+  <div class="tip-chord" id="tip-chord"></div>
+  <div class="tip-row"><span class="tip-label">J-Pop count</span><span class="tip-val" id="tip-jp"></span></div>
+  <div class="tip-row"><span class="tip-label">Western count</span><span class="tip-val" id="tip-wp"></span></div>
+</div>
+
+<div class="stamp">
+  <span>CHORD<br>FLOW<br>研究</span>
+</div>
+
+<script>
+// ── FETCH FROM SUPABASE ────────────────────────────────────────────────────
+
+async function fetchAll(table) {
+  const url = `${SUPABASE_URL}/rest/v1/${table}?select=*&limit=10000`;
+  const res  = await fetch(url, {
+    headers: {
+      "apikey": SUPABASE_KEY,
+      "Authorization": `Bearer ${SUPABASE_KEY}`
+    }
+  });
+  if (!res.ok) throw new Error(`Failed to fetch ${table}: ${res.status}`);
+  return res.json();
+}
+
+// ── MAIN ──────────────────────────────────────────────────────────────────
+
+let allTransitions = [];
+let currentDecade  = "all";
+let currentThreshold = 5;
+
+async function init() {
+  try {
+    allTransitions = await fetchAll("transitions");
+    document.getElementById("loading").style.display = "none";
+    buildViz();
+  } catch(e) {
+    document.getElementById("loading").innerHTML =
+      `<p style="color:var(--red)">Error loading data: ${e.message}</p>`;
+  }
+}
+
+// ── BUILD VIZ ─────────────────────────────────────────────────────────────
+
+function buildViz() {
+  // Filter by decade
+  let rows = allTransitions;
+  if (currentDecade !== "all") {
+    rows = rows.filter(r => r.decade == currentDecade);
+  }
+
+  // Aggregate counts per transition × category
+  const jpMap   = new Map();
+  const wpMap   = new Map();
+
+  rows.forEach(r => {
+    const key = `${r.from_chord}→${r.to_chord}`;
+    if (r.category === "jpop_jrock") {
+      jpMap.set(key, (jpMap.get(key) || 0) + r.count);
+    } else {
+      wpMap.set(key, (wpMap.get(key) || 0) + r.count);
+    }
+  });
+
+  // All unique transition keys
+  const allKeys = new Set([...jpMap.keys(), ...wpMap.keys()]);
+
+  // Build edge list filtered by threshold
+  const edges = [];
+  allKeys.forEach(key => {
+    const jp = jpMap.get(key) || 0;
+    const wp = wpMap.get(key) || 0;
+    const total = jp + wp;
+    if (total >= currentThreshold) {
+      const [from, to] = key.split("→");
+      edges.push({ from, to, jp, wp, total,
+        type: jp > 0 && wp > 0 ? "both" : jp > 0 ? "jp" : "wp" });
+    }
+  });
+
+  // Node set
+  const nodeSet = new Set();
+  edges.forEach(e => { nodeSet.add(e.from); nodeSet.add(e.to); });
+  const nodes = Array.from(nodeSet).map(id => {
+    const jpCount = rows.filter(r => r.from_chord === id && r.category === "jpop_jrock")
+                        .reduce((s,r) => s + r.count, 0);
+    const wpCount = rows.filter(r => r.from_chord === id && r.category === "western_pop")
+                        .reduce((s,r) => s + r.count, 0);
+    return { id, jpCount, wpCount, total: jpCount + wpCount };
+  });
+
+  // Stats
+  document.getElementById("stat-nodes").textContent = nodes.length;
+  document.getElementById("stat-edges").textContent = edges.length;
+  document.getElementById("stat-jp").textContent = edges.filter(e => e.type !== "wp").length;
+  document.getElementById("stat-wp").textContent = edges.filter(e => e.type !== "jp").length;
+
+  // Clear previous SVG
+  d3.select("#viz-wrap svg").remove();
+
+  const wrap   = document.getElementById("viz-wrap");
+  const W      = wrap.clientWidth;
+  const H      = wrap.clientHeight;
+
+  const svg = d3.select("#viz-wrap").append("svg")
+    .attr("width", W).attr("height", H);
+
+  // Arrow markers
+  ["jp","wp","both"].forEach(type => {
+    const color = type === "jp" ? "#c0392b" : type === "wp" ? "#1a3a5c" : "#8b5a2b";
+    svg.append("defs").append("marker")
+      .attr("id", `arrow-${type}`)
+      .attr("viewBox","0 -4 8 8")
+      .attr("refX", 18).attr("refY", 0)
+      .attr("markerWidth", 5).attr("markerHeight", 5)
+      .attr("orient","auto")
+      .append("path")
+      .attr("d","M0,-4L8,0L0,4")
+      .attr("fill", color)
+      .attr("opacity", 0.7);
+  });
+
+  // Force simulation
+  const sim = d3.forceSimulation(nodes)
+    .force("link", d3.forceLink(edges)
+      .id(d => d.id)
+      .source(d => d.from)
+      .target(d => d.to)
+      .distance(d => 80 + (1 / (d.total + 1)) * 200)
+      .strength(0.3))
+    .force("charge", d3.forceManyBody().strength(-320))
+    .force("center", d3.forceCenter(W / 2, H / 2))
+    .force("collision", d3.forceCollide().radius(d => nodeRadius(d) + 12));
+
+  // Size scale
+  const maxTotal = d3.max(nodes, d => d.total) || 1;
+  function nodeRadius(d) {
+    return 10 + (d.total / maxTotal) * 28;
+  }
+
+  // Edge width scale
+  const maxEdge = d3.max(edges, d => d.total) || 1;
+  function edgeWidth(d) {
+    return 0.8 + (d.total / maxEdge) * 4;
+  }
+
+  // Draw edges
+  const edgeSel = svg.append("g").selectAll("line")
+    .data(edges).enter().append("line")
+    .attr("class", "edge")
+    .attr("stroke", d =>
+      d.type === "jp"   ? "rgba(192,57,43,0.4)" :
+      d.type === "wp"   ? "rgba(26,58,92,0.4)" :
+                          "rgba(139,90,43,0.5)")
+    .attr("stroke-width", d => edgeWidth(d))
+    .attr("marker-end", d => `url(#arrow-${d.type})`);
+
+  // Draw nodes
+  const nodeSel = svg.append("g").selectAll("g")
+    .data(nodes).enter().append("g")
+    .attr("class", "node")
+    .call(d3.drag()
+      .on("start", (event, d) => {
+        if (!event.active) sim.alphaTarget(0.3).restart();
+        d.fx = d.x; d.fy = d.y;
+      })
+      .on("drag", (event, d) => { d.fx = event.x; d.fy = event.y; })
+      .on("end", (event, d) => {
+        if (!event.active) sim.alphaTarget(0);
+        d.fx = null; d.fy = null;
+      }));
+
+  // Node background circle (white halo)
+  nodeSel.append("circle")
+    .attr("r", d => nodeRadius(d) + 3)
+    .attr("fill", "var(--paper)")
+    .attr("stroke", "none");
+
+  // Main node circle
+  nodeSel.append("circle")
+    .attr("r", d => nodeRadius(d))
+    .attr("fill", d => {
+      const jpRatio = d.total > 0 ? d.jpCount / d.total : 0.5;
+      return d3.interpolateRgb("#1a3a5c", "#c0392b")(jpRatio);
+    })
+    .attr("stroke", d => {
+      const jpRatio = d.total > 0 ? d.jpCount / d.total : 0.5;
+      return jpRatio > 0.6 ? "#8b1a10" : jpRatio < 0.4 ? "#0d2440" : "#5a3a1a";
+    })
+    .attr("stroke-width", 2);
+
+  // Node label
+  nodeSel.append("text")
+    .attr("fill", "#fff")
+    .attr("font-size", d => Math.max(9, Math.min(14, nodeRadius(d) * 0.7)))
+    .text(d => d.id);
+
+  // Node hover interactions
+  const tooltip = document.getElementById("tooltip");
+
+  nodeSel
+    .on("mousemove", (event, d) => {
+      document.getElementById("tip-chord").textContent = d.id;
+      document.getElementById("tip-jp").textContent = d.jpCount;
+      document.getElementById("tip-wp").textContent = d.wpCount;
+      tooltip.style.left = (event.clientX + 14) + "px";
+      tooltip.style.top  = (event.clientY - 10) + "px";
+      tooltip.classList.add("visible");
+
+      // Fade unconnected nodes and edges
+      const connected = new Set([d.id]);
+      edges.forEach(e => {
+        if (e.from === d.id || e.to === d.id) {
+          connected.add(e.from); connected.add(e.to);
+        }
+      });
+      nodeSel.classed("faded", n => !connected.has(n.id));
+      edgeSel.classed("faded", e => e.from !== d.id && e.to !== d.id);
+      edgeSel.classed("highlighted", e => e.from === d.id || e.to === d.id);
+    })
+    .on("mouseleave", () => {
+      tooltip.classList.remove("visible");
+      nodeSel.classed("faded", false);
+      edgeSel.classed("faded", false);
+      edgeSel.classed("highlighted", false);
+    });
+
+  // Simulation tick
+  sim.on("tick", () => {
+    edgeSel
+      .attr("x1", d => d.source.x)
+      .attr("y1", d => d.source.y)
+      .attr("x2", d => d.target.x)
+      .attr("y2", d => d.target.y);
+
+    nodeSel.attr("transform", d =>
+      `translate(${Math.max(40, Math.min(W-40, d.x))},${Math.max(40, Math.min(H-40, d.y))})`
+    );
+  });
+}
+
+// ── CONTROLS ──────────────────────────────────────────────────────────────
+
+document.querySelectorAll(".decade-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".decade-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    currentDecade = btn.dataset.decade;
+    buildViz();
+  });
+});
+
+const thresholdInput = document.getElementById("threshold");
+const thresholdVal   = document.getElementById("threshold-val");
+
+thresholdInput.addEventListener("input", () => {
+  currentThreshold = +thresholdInput.value;
+  thresholdVal.textContent = currentThreshold;
+  buildViz();
+});
+
+// ── INIT ──────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
