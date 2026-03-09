@@ -388,7 +388,6 @@
 <script>
   const SUPABASE_URL = "https://shsytkwymkpyphbjksdn.supabase.co";
   const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNoc3l0a3d5bWtweXBoYmprc2RuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMwMzUzNzQsImV4cCI6MjA4ODYxMTM3NH0.Q3Te6SDCdUTfdeoo8HGPr_LukR_r-MrR9VFj5ok6sok";
-
 </script>
 
 <header>
@@ -576,28 +575,31 @@ function buildViz() {
       .attr("fill", color)
       .attr("opacity", 0.7);
   });
-edges.forEach(e => { e.source = e.from; e.target = e.to; });
+
+  // Remap from/to to source/target so D3 forceLink can resolve nodes
+  edges.forEach(e => { e.source = e.from; e.target = e.to; });
+
+  // Size scale — must be defined before simulation
+  const maxTotal = d3.max(nodes, d => d.total) || 1;
+  const maxEdge = d3.max(edges, d => d.total) || 1;
+
+  function nodeRadius(d) {
+    return 10 + (d.total / maxTotal) * 28;
+  }
+
+  function edgeWidth(d) {
+    return 0.8 + (d.total / maxEdge) * 4;
+  }
+
   // Force simulation
   const sim = d3.forceSimulation(nodes)
-   .force("link", d3.forceLink(edges)
+    .force("link", d3.forceLink(edges)
       .id(d => d.id)
       .distance(d => 80 + (1 / (d.total + 1)) * 200)
       .strength(0.3))
     .force("charge", d3.forceManyBody().strength(-320))
     .force("center", d3.forceCenter(W / 2, H / 2))
     .force("collision", d3.forceCollide().radius(d => nodeRadius(d) + 12));
-
-  // Size scale
-  const maxTotal = d3.max(nodes, d => d.total) || 1;
-  function nodeRadius(d) {
-    return 10 + (d.total / maxTotal) * 28;
-  }
-
-  // Edge width scale
-  const maxEdge = d3.max(edges, d => d.total) || 1;
-  function edgeWidth(d) {
-    return 0.8 + (d.total / maxEdge) * 4;
-  }
 
   // Draw edges
   const edgeSel = svg.append("g").selectAll("line")
@@ -719,5 +721,3 @@ init();
 </script>
 </body>
 </html>
-
-
