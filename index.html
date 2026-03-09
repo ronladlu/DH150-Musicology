@@ -576,13 +576,13 @@ function buildViz() {
       .attr("fill", color)
       .attr("opacity", 0.7);
   });
-
+edges.forEach(e => { e.source = e.from; e.target = e.to; });
   // Force simulation
   const sim = d3.forceSimulation(nodes)
     .force("link", d3.forceLink(edges)
       .id(d => d.id)
-      .source(d => d.from)
-      .target(d => d.to)
+      .distance(d => 80 + (1 / (d.total + 1)) * 200)
+      .strength(0.3))
       .distance(d => 80 + (1 / (d.total + 1)) * 200)
       .strength(0.3))
     .force("charge", d3.forceManyBody().strength(-320))
