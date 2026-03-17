@@ -106,6 +106,99 @@
     flex-shrink: 0;
   }
 
+  /* ── GENRE TOGGLES ── */
+  .genre-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #555;
+    user-select: none;
+    padding: 0.3rem 0.6rem;
+    border: 1px solid transparent;
+    transition: all 0.2s;
+  }
+  .genre-toggle:hover { border-color: rgba(0,0,0,0.15); }
+  .genre-toggle.off { opacity: 0.35; }
+  .genre-toggle .toggle-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    transition: opacity 0.2s;
+  }
+
+  /* ── INFO MODAL ── */
+  .info-btn {
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    border: 1px solid rgba(0,0,0,0.3);
+    background: transparent;
+    color: #888;
+    font-size: 0.6rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Shippori Mincho', serif;
+    font-weight: 600;
+    transition: all 0.2s;
+    flex-shrink: 0;
+  }
+  .info-btn:hover { border-color: var(--red); color: var(--red); }
+
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+  }
+  .modal-overlay.visible { opacity: 1; pointer-events: all; }
+
+  .modal {
+    background: var(--paper);
+    border-left: 3px solid var(--red);
+    padding: 2rem;
+    max-width: 360px;
+    width: 90%;
+    position: relative;
+  }
+
+  .modal h3 {
+    font-family: 'Shippori Mincho', serif;
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+  }
+
+  .modal p {
+    font-size: 0.75rem;
+    line-height: 1.8;
+    color: #444;
+    margin-bottom: 0.8rem;
+  }
+
+  .modal p:last-of-type { margin-bottom: 1.5rem; }
+
+  .modal-close {
+    background: var(--ink);
+    color: var(--paper);
+    border: none;
+    padding: 0.5rem 1.2rem;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+  }
+
   /* ── CONTROLS ── */
   .controls {
     position: relative;
@@ -396,13 +489,13 @@
     <p class="subtitle">Chord progression networks · J-Pop/J-Rock vs Eurocentric Western Pop</p>
   </div>
   <div class="legend">
-    <div class="legend-item">
-      <div class="legend-dot" style="background:var(--jp-node)"></div>
-      J-Pop / J-Rock transitions
+    <div class="genre-toggle" id="toggle-jp" title="Toggle J-Pop / J-Rock">
+      <div class="toggle-dot" style="background:var(--jp-node)"></div>
+      J-Pop / J-Rock
     </div>
-    <div class="legend-item">
-      <div class="legend-dot" style="background:var(--wp-node)"></div>
-      Western Pop transitions
+    <div class="genre-toggle" id="toggle-wp" title="Toggle Western Pop">
+      <div class="toggle-dot" style="background:var(--wp-node)"></div>
+      Western Pop
     </div>
     <div class="legend-item">
       <div class="legend-line" style="background:linear-gradient(90deg,var(--jp-node),var(--wp-node))"></div>
@@ -423,6 +516,7 @@
   <div class="divider-v"></div>
   <div class="threshold-control">
     <label>Min. transitions</label>
+    <button class="info-btn" id="threshold-info" title="What does this do?">i</button>
     <input type="range" id="threshold" min="1" max="50" value="5">
     <span id="threshold-val">5</span>
   </div>
@@ -460,6 +554,16 @@
   <div class="tip-row"><span class="tip-label">Western count</span><span class="tip-val" id="tip-wp"></span></div>
 </div>
 
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <h3>Minimum Transitions</h3>
+    <p>Think of each arrow as a chord transition spotted across the songs — like catching I → V happening over and over again. This slider controls how many times a move has to appear before it shows up on the diagram.</p>
+    <p>Set it <strong>low (1–5)</strong> and you'll see everything, including rare one-off moments. Set it <strong>high (20+)</strong> and only the most repeated, defining patterns survive — the moves that really characterize each genre.</p>
+    <p>Start high for a clean picture, then drag left to reveal more detail.</p>
+    <button class="modal-close" id="modal-close">Got it</button>
+  </div>
+</div>
+
 <div class="stamp">
   <span>CHORD<br>FLOW<br>研究</span>
 </div>
@@ -484,6 +588,8 @@ async function fetchAll(table) {
 let allTransitions = [];
 let currentDecade  = "all";
 let currentThreshold = 5;
+let showJP = true;
+let showWP = true;
 
 async function init() {
   try {
@@ -528,9 +634,12 @@ function buildViz() {
     const wp = wpMap.get(key) || 0;
     const total = jp + wp;
     if (total >= currentThreshold) {
+      const type = jp > 0 && wp > 0 ? "both" : jp > 0 ? "jp" : "wp";
+      // Skip edge if its genre is toggled off (keep "both" always)
+      if (type === "jp" && !showJP) return;
+      if (type === "wp" && !showWP) return;
       const [from, to] = key.split("→");
-      edges.push({ from, to, jp, wp, total,
-        type: jp > 0 && wp > 0 ? "both" : jp > 0 ? "jp" : "wp" });
+      edges.push({ from, to, jp, wp, total, type });
     }
   });
 
@@ -714,6 +823,30 @@ thresholdInput.addEventListener("input", () => {
   currentThreshold = +thresholdInput.value;
   thresholdVal.textContent = currentThreshold;
   buildViz();
+});
+
+// ── GENRE TOGGLES ─────────────────────────────────────────────────────────
+document.getElementById("toggle-jp").addEventListener("click", () => {
+  showJP = !showJP;
+  document.getElementById("toggle-jp").classList.toggle("off", !showJP);
+  buildViz();
+});
+
+document.getElementById("toggle-wp").addEventListener("click", () => {
+  showWP = !showWP;
+  document.getElementById("toggle-wp").classList.toggle("off", !showWP);
+  buildViz();
+});
+
+// ── MODAL ─────────────────────────────────────────────────────────────────
+document.getElementById("threshold-info").addEventListener("click", () => {
+  document.getElementById("modal-overlay").classList.add("visible");
+});
+document.getElementById("modal-close").addEventListener("click", () => {
+  document.getElementById("modal-overlay").classList.remove("visible");
+});
+document.getElementById("modal-overlay").addEventListener("click", (e) => {
+  if (e.target === e.currentTarget) e.currentTarget.classList.remove("visible");
 });
 
 // ── INIT ──────────────────────────────────────────────────────────────────
