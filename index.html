@@ -485,7 +485,10 @@
 
 <header>
   <div class="title-block">
-    <h1>和音の流れ <span>—</span> Chord Flow</h1>
+    <div style="display:flex;align-items:baseline;gap:1.5rem;">
+      <h1>和音の流れ <span>—</span> Chord Flow</h1>
+      <a href="about.html" style="font-size:0.68rem;letter-spacing:0.15em;text-transform:uppercase;text-decoration:none;color:#888;border-bottom:1px solid transparent;padding-bottom:2px;transition:all 0.2s;" onmouseover="this.style.color='var(--red)';this.style.borderColor='var(--red)'" onmouseout="this.style.color='#888';this.style.borderColor='transparent'">About</a>
+    </div>
     <p class="subtitle">Chord progression networks · J-Pop/J-Rock vs Eurocentric Western Pop</p>
   </div>
   <div class="legend">
@@ -497,8 +500,8 @@
       <div class="toggle-dot" style="background:var(--wp-node)"></div>
       Western Pop
     </div>
-    <div class="legend-item">
-      <div class="legend-line" style="background:linear-gradient(90deg,var(--jp-node),var(--wp-node))"></div>
+    <div class="genre-toggle" id="toggle-both" title="Toggle Shared transitions">
+      <div class="legend-line" style="background:linear-gradient(90deg,var(--jp-node),var(--wp-node));width:24px;height:2px;flex-shrink:0;"></div>
       Shared transitions
     </div>
   </div>
@@ -590,6 +593,7 @@ let currentDecade  = "all";
 let currentThreshold = 5;
 let showJP = true;
 let showWP = true;
+let showBoth = true;
 
 async function init() {
   try {
@@ -638,6 +642,7 @@ function buildViz() {
       // Skip edge if its genre is toggled off (keep "both" always)
       if (type === "jp" && !showJP) return;
       if (type === "wp" && !showWP) return;
+      if (type === "both" && !showBoth) return;
       const [from, to] = key.split("→");
       edges.push({ from, to, jp, wp, total, type });
     }
@@ -835,6 +840,12 @@ document.getElementById("toggle-jp").addEventListener("click", () => {
 document.getElementById("toggle-wp").addEventListener("click", () => {
   showWP = !showWP;
   document.getElementById("toggle-wp").classList.toggle("off", !showWP);
+  buildViz();
+});
+
+document.getElementById("toggle-both").addEventListener("click", () => {
+  showBoth = !showBoth;
+  document.getElementById("toggle-both").classList.toggle("off", !showBoth);
   buildViz();
 });
 
